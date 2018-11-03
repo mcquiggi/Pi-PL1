@@ -1,0 +1,209 @@
+//PL1LFCLG JOB (001),'COMPUTE PI',                                      00010000
+//             CLASS=A,MSGCLASS=A,MSGLEVEL=(1,1),REGION=4096K,		00020000
+//             TIME=1440  						00020050
+//MACHIN EXEC PL1LFCLG                                                  00030000
+//PL1L.SYSLIN DD UNIT=SYSDA                                             00040000
+//PL1L.SYSIN DD *                                                       00050000
+ START: PROCEDURE OPTIONS(MAIN);                                      
+	DECLARE (A, R5, R239, P) (SIZE) FIXED DECIMAL(10) CONTROLLED;
+	DECLARE ARCCOT ENTRY (FIXED DECIMAL(10), 
+		(203) FIXED DECIMAL(10));
+	DECLARE (DIGITS, SIZE, I, CARRY) FIXED DECIMAL(10);
+
+
+	/***********************************************************/
+	/* SETUP - READ DESIRED NUMBER OF DIGITS AND ALLOCATE DATA */
+	/* STRUCTURES     					   */ 
+	/***********************************************************/
+	GET LIST(DIGITS);
+	SIZE=DIGITS/5+3;
+	ALLOCATE A, R5, R239, P;
+
+ 	/****************/
+	/* PRINT TITLES */
+ 	/****************/
+	PUT SKIP EDIT((100)'*') (A);
+ 	PUT SKIP EDIT('*', '*') (A, X(98), A);
+	PUT SKIP EDIT('*', 'C O M P U T A T I O N   O F   P I',
+		'*') 
+		(A, X(31), A, X(34), A);
+	PUT SKIP EDIT('*',(98)' ', '*') (A, A, A);
+	PUT SKIP EDIT((100)'*') (A);
+	
+ 	/*********************/
+ 	/* COMPUTE ARCCOT(5) */
+ 	/*********************/
+	CALL ARCCOT(5, R5);
+
+ 	/***********************/
+ 	/* COMPUTE ARCCOT(239) */
+ 	/***********************/
+	CALL ARCCOT(239, R239);
+
+ 	/*************************/
+ 	/* COMPUTE 4 * ARCCOT(5) */
+ 	/*************************/
+	CARRY=0;
+	DO I = SIZE TO 1 BY -1;
+		P(I)=4*R5(I)+CARRY;
+		IF P(I) > 99999 THEN DO;
+			CARRY=FLOOR(P(I)/100000);
+			P(I)=P(I)-CARRY*100000;
+		END;
+		ELSE CARRY=0;
+	END;
+
+ 	/***************************************/
+ 	/* COMPUTE 4 * ARCCOT(5) - ARCCOT(239) */
+ 	/***************************************/
+	DO I = SIZE TO 2 BY -1;
+		A(I)=P(I)-R239(I);
+		IF A(I) < 0 THEN DO;
+			P(I-1)=P(I-1)-1;
+			A(I)=A(I)+100000;
+		END;
+	END;
+	A(1)=P(1)-R239(1);
+ 
+ 	/****************************************************/
+ 	/* COMPUTE PI, OR 4 * (4 * ARCCOT(5) - ARCCOT(239)) */
+ 	/****************************************************/
+	CARRY=0;
+	DO I = SIZE TO 1 BY -1;
+		P(I)=4*A(I)+CARRY;
+		IF P(I) > 99999 THEN DO;
+			CARRY=FLOOR(P(I)/100000);
+			P(I)=P(I)-CARRY*100000;
+		END;
+		ELSE CARRY=0;
+	END;
+
+ 	/*********************/
+	/* PRINT THE RESULTS */
+ 	/*********************/
+	PUT SKIP(5) EDIT('PI COMPUTED TO ', (SIZE-3)*5, 
+		' DECIMAL PLACES:') 
+		(A, P'Z,ZZZ,ZZZ', A);
+	PUT SKIP(2);
+	DO I = 1 TO (SIZE-2);
+		PUT EDIT(P(I)) (P'ZZZZZ99999');
+	END;
+
+	PUT SKIP(5) LIST('DONE!');
+
+	/************************************/
+	/* FREE PREVIOUSLY-ALLOCATED MEMORY */
+	/************************************/
+	FREE A, R5, R239, P;
+
+ 	END START;                                                
+
+*PROCESS;
+ ARCCOT: PROCEDURE(DIVISOR, RESULT);
+
+	/**********************************************/
+	/* EXTERNAL PROCEDURE TO COMPUTE ARC COTANGET */
+	/**********************************************/
+
+	DECLARE RESULT (*) FIXED DECIMAL(10);
+	DECLARE UNITY (SIZE) FIXED DECIMAL(10) 
+		INITIAL (1, (SIZE-1)0) CONTROLLED;
+	DECLARE (SUM, XPOWER, TERM, A) (SIZE) 
+		FIXED DECIMAL(10) CONTROLLED;
+	DECLARE (SIZE, DIVISOR, Q, R, X, N, SIGN) FIXED DECIMAL(10);
+
+	/**************************************************/
+	/* INTERNAL PROCEDURE TO PERFORM Q/R DIVISION AND */
+	/* MODIFY ARRAY A                                 */
+	/**************************************************/
+ DIV:	PROCEDURE(D);
+	DECLARE (D, Q, R) FIXED DECIMAL(10);
+	DO I = 1 TO SIZE;
+		Q=FLOOR(A(I)/D);
+		R=MOD(A(I), D);
+		RESULT(I)=Q;
+		IF I < SIZE THEN A(I+1)=A(I+1)+R*100000;
+	END;	
+	END DIV;
+
+	SIZE=DIM(RESULT, 1);
+	ALLOCATE UNITY, SUM, XPOWER, TERM, A;
+
+	A=UNITY;
+	CALL DIV(DIVISOR);
+ /*
+	DO I = 1 TO SIZE;
+		Q=FLOOR(A(I)/DIVISOR);
+		R=MOD(A(I), DIVISOR);
+		RESULT(I)=Q;
+		IF I < SIZE THEN A(I+1)=A(I+1)+R*100000;
+	END;	
+ */
+	SUM,XPOWER=RESULT;
+	N=3;
+	SIGN=-1;
+	X=DIVISOR*DIVISOR;
+ L1:
+	A=XPOWER;
+	CALL DIV(X);
+ /*
+	DO I = 1 TO SIZE;
+		Q=FLOOR(A(I)/X);
+		R=MOD(A(I), X);
+		RESULT(I)=Q;
+		IF I < SIZE THEN A(I+1)=A(I+1)+R*100000;
+	END;	
+ */
+	XPOWER=RESULT;
+	
+	A=XPOWER;
+	CALL DIV(N);
+ /*
+	DO I = 1 TO SIZE;
+		Q=FLOOR(A(I)/N);
+		R=MOD(A(I), N);
+		RESULT(I)=Q;
+		IF I < SIZE THEN A(I+1)=A(I+1)+R*100000;
+	END;	
+ */
+	TERM=RESULT;
+
+	DO I = 1 TO SIZE;
+		IF TERM(I) ^= 0 THEN GO TO L2;
+	END;
+	RESULT=SUM;
+	FREE UNITY, SUM, XPOWER, TERM, A;
+	RETURN;
+ L2:
+	/* NOW DO SUM=SUM+(SIGN*TERM); */
+	IF SIGN = 1 THEN DO;
+		DO I = SIZE TO 2 BY -1;
+			SUM(I)=SUM(I)+TERM(I);
+			IF SUM(I) >= 100000 THEN DO;
+				SUM(I-1)=SUM(I-1)+1;
+				SUM(I)=SUM(I)-100000;
+			END;
+		END;
+		SUM(1)=SUM(1)+TERM(1);
+	END;
+	ELSE DO;
+		DO I = SIZE TO 2 BY -1;
+			SUM(I)=SUM(I)-TERM(I);
+			IF SUM(I) < 0 THEN DO;
+				SUM(I-1)=SUM(I-1)-1;
+				SUM(I)=SUM(I)+100000;
+			END;
+		END;
+		SUM(1)=SUM(1)-TERM(1);
+	END;
+
+	SIGN=-SIGN;
+	N=N+2;
+	GO TO L1;
+	END ARCCOT;
+
+//LKED.SYSLIB DD DSN=SYSC.PL1LIB,DISP=SHR                               00090000
+//GO.STEPLIB DD DSN=SYSC.PL1LIB,DISP=SHR                                00100000
+//GO.SYSIN DD * 
+100000
+//  
